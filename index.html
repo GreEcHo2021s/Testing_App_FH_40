@@ -273,10 +273,26 @@
       <span>Hz ±</span>
       <input type="number" id="freqTolerance" min="10" max="2000" value="180" style="width:70px;" title="Tolerancia (Hz)">
     </div>
-    <div style="font-size:11px; color:var(--accent); margin-top:6px;">
-      ✓ Preconfigurado con la frecuencia de tu detector (~4760-4780 Hz), calibrada a partir del audio de muestra que compartiste.
+    <div style="font-size:11px; color:var(--muted); margin-top:6px;">
+      Valor de referencia (~4770 Hz) calculado a partir del audio de muestra. Si tu detector real no matchea, usá la calibración en vivo de abajo.
     </div>
-    <div style="font-size:12px; color:var(--muted); margin-top:10px;">
+
+    <div style="margin-top:16px; padding-top:14px; border-top:1px dashed var(--border);">
+      <div style="font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Calibración en vivo</div>
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
+        <span style="font-size:12px; color:var(--muted);">Frecuencia dominante ahora:</span>
+        <span id="liveFreqReadout" style="font-family:monospace; font-size:20px; font-weight:700; color:var(--accent2);">-- Hz</span>
+      </div>
+      <div style="background:var(--panel2); border:1px solid var(--border); border-radius:8px; height:10px; overflow:hidden; margin-bottom:10px;">
+        <div id="bandLevelBar" style="height:100%; width:0%; background:var(--accent2); transition:width 0.05s linear;"></div>
+      </div>
+      <button id="btnCapture" class="btn-mark" style="width:100%; padding:12px;">🎯 Mantené apretado mientras suena el detector</button>
+      <div style="font-size:11px; color:var(--muted); margin-top:6px;">
+        Con el micrófono activo, hacé sonar tu detector real y mantené este botón apretado durante el pulso. Al soltar, la app calcula automáticamente la frecuencia objetivo y la tolerancia a partir de lo que realmente captó tu celular.
+      </div>
+    </div>
+
+    <div style="font-size:12px; color:var(--muted); margin-top:14px;">
       Con el cronómetro corriendo, cuando el sonido supere el umbral (y coincida con la frecuencia, si está exigida), se marca el tiempo automáticamente.
     </div>
   </div>
@@ -404,20 +420,90 @@
   const freqInputsWrap = document.getElementById('freqInputsWrap');
   const targetFreq = document.getElementById('targetFreq');
   const freqTolerance = document.getElementById('freqTolerance');
+  const liveFreqReadout = document.getElementById('liveFreqReadout');
+  const bandLevelBar = document.getElementById('bandLevelBar');
+  const btnCapture = document.getElementById('btnCapture');
+
+  let capturing = false;
+  let capturedFreqs = [];
 
   useFreqFilter.addEventListener('change', () => {
     freqInputsWrap.style.opacity = useFreqFilter.checked ? '1' : '0.4';
   });
 
+  function startCapture(e){
+    e.preventDefault();
+    if(!listening){
+      alert('Primero activá el micrófono.');
+      return;
+    }
+    capturing = true;
+    capturedFreqs = [];
+    btnCapture.textContent = '🔴 Escuchando… soltá cuando termine el pulso';
+  }
+
+  function endCapture(e){
+    if(e) e.preventDefault();
+    if(!capturing) return;
+    capturing = false;
+    btnCapture.textContent = '🎯 Mantené apretado mientras suena el detector';
+
+    if(capturedFreqs.length === 0){
+      alert('No se detectó ningún pico de frecuencia claro mientras mantuviste apretado. Probá de nuevo, acercando el celular al detector o subiendo la sensibilidad.');
+      return;
+    }
+
+    // Usamos la mediana (más robusta ante algún valor suelto de ruido) y
+    // el desvío para armar una tolerancia razonable.
+    const sorted = [...capturedFreqs].sort((a,b) => a-b);
+    const median = sorted[Math.floor(sorted.length/2)];
+    const spread = Math.max(...capturedFreqs) - Math.min(...capturedFreqs);
+    const tolerance = Math.max(120, Math.round(spread/2) + 100);
+
+    targetFreq.value = median;
+    freqTolerance.value = tolerance;
+    useFreqFilter.checked = true;
+    freqInputsWrap.style.opacity = '1';
+
+    alert(`Frecuencia capturada: ${median} Hz (±${tolerance} Hz)\nMuestras usadas: ${capturedFreqs.length}\n\nYa quedó configurada como objetivo. Probá hacer sonar el detector con el cronómetro corriendo para ver si automarca.`);
+  }
+
+  btnCapture.addEventListener('touchstart', startCapture, { passive: false });
+  btnCapture.addEventListener('touchend', endCapture);
+  btnCapture.addEventListener('touchcancel', endCapture);
+  btnCapture.addEventListener('mousedown', startCapture);
+  btnCapture.addEventListener('mouseup', endCapture);
+  btnCapture.addEventListener('mouseleave', () => { if(capturing) endCapture(); });
+
   // Aviso temprano sobre si el navegador va a poder mostrar el cartel de permiso
-  (function checkSecureContext(){
+  (async function checkSecureContext(){
     const notice = document.getElementById('secureContextNotice');
-    if(!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    const proto = location.protocol;
+    const host = location.host || '(sin host, archivo local)';
+    const inIframe = (window.self !== window.top);
+    const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+    let permState = 'desconocido';
+    try{
+      if(navigator.permissions && navigator.permissions.query){
+        const st = await navigator.permissions.query({ name: 'microphone' });
+        permState = st.state; // 'granted' | 'denied' | 'prompt'
+      }
+    }catch(e){ /* algunos navegadores no soportan query de 'microphone' */ }
+
+    const diag = `protocolo=${proto} · host=${host} · iframe=${inIframe} · API=${hasMediaDevices ? 'sí' : 'no'} · permiso=${permState}`;
+
+    if(!window.isSecureContext || !hasMediaDevices){
       notice.style.color = 'var(--danger)';
-      notice.textContent = '⚠ Esta página no está en HTTPS/localhost: Chrome no va a poder pedir permiso de micrófono. Subila a un hosting con HTTPS o abrila como vista previa.';
+      notice.innerHTML = '⚠ Chrome no va a poder pedir permiso de micrófono acá.<br>' + diag +
+        '<br>Motivo probable: la página no está en HTTPS/localhost (por ejemplo, se abrió el .html descargado directamente, protocolo file://) o está dentro de un iframe sin permiso de micrófono delegado.';
+    }else if(permState === 'denied'){
+      notice.style.color = 'var(--danger)';
+      notice.innerHTML = '⚠ El micrófono está bloqueado para este sitio en este navegador.<br>' + diag +
+        '<br>Tocá el candado/ⓘ junto a la URL → Permisos del sitio → Micrófono → Permitir. Después recargá la página.';
     }else{
       notice.style.color = 'var(--muted)';
-      notice.textContent = 'Al tocar "Activar micrófono" vas a ver el cartel de permiso de Chrome. Aceptalo para habilitar el auto-marcado.';
+      notice.innerHTML = 'Al tocar "Activar micrófono" vas a ver el cartel de permiso de Chrome. Aceptalo para habilitar el auto-marcado.<br><span style="opacity:0.7">' + diag + '</span>';
     }
   })();
 
@@ -542,26 +628,55 @@
     const rms = Math.sqrt(sumSquares / bufferLength);
     levelBar.style.width = Math.min(100, rms * 300) + '%';
 
-    // Umbral según sensibilidad (1-100): más sensible = umbral más bajo
+    // --- Análisis de frecuencia: siempre se calcula, para poder mostrar
+    //     la frecuencia dominante en vivo y alimentar la calibración ---
+    const freqData = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(freqData);
+    const sampleRate = audioCtx.sampleRate;
+    const binHz = sampleRate / analyser.fftSize;
+
+    // Ignoramos los bins muy graves (< ~150 Hz) para no confundir con ruido de fondo/roce
+    const minBin = Math.max(1, Math.floor(150 / binHz));
+    let peakBin = -1;
+    let peakMag = 0;
+    for(let i = minBin; i < freqData.length; i++){
+      if(freqData[i] > peakMag){
+        peakMag = freqData[i];
+        peakBin = i;
+      }
+    }
+    const NOISE_FLOOR = 45; // por debajo de esto, consideramos que no hay un pico claro
+    const dominantFreq = (peakBin >= 0 && peakMag > NOISE_FLOOR) ? Math.round(peakBin * binHz) : null;
+
+    if(dominantFreq){
+      liveFreqReadout.textContent = dominantFreq + ' Hz';
+    }else{
+      liveFreqReadout.textContent = '-- Hz';
+    }
+
+    // Barra de energía en la banda objetivo actual (para ver si matchea en vivo)
+    const target = parseFloat(targetFreq.value) || 1000;
+    const tol = parseFloat(freqTolerance.value) || 150;
+    const lowBin = Math.max(0, Math.floor((target - tol) / binHz));
+    const highBin = Math.min(freqData.length - 1, Math.ceil((target + tol) / binHz));
+    let bandEnergy = 0;
+    for(let i = lowBin; i <= highBin; i++){
+      if(freqData[i] > bandEnergy) bandEnergy = freqData[i];
+    }
+    bandLevelBar.style.width = Math.min(100, (bandEnergy / 255) * 100) + '%';
+
+    // Si el usuario está manteniendo apretado "Capturar", vamos guardando lecturas válidas
+    if(capturing && dominantFreq){
+      capturedFreqs.push(dominantFreq);
+    }
+
+    // --- Lógica de disparo (auto-marcar) ---
     const sensitivity = parseInt(sensSlider.value);
     const threshold = 0.55 - (sensitivity / 100) * 0.5;
     let triggered = rms > threshold;
 
-    // Filtro opcional de frecuencia específica
     if(triggered && useFreqFilter.checked){
-      const freqData = new Uint8Array(analyser.frequencyBinCount);
-      analyser.getByteFrequencyData(freqData);
-      const sampleRate = audioCtx.sampleRate;
-      const target = parseFloat(targetFreq.value) || 1000;
-      const tol = parseFloat(freqTolerance.value) || 150;
-      const binHz = sampleRate / analyser.fftSize;
-      const lowBin = Math.max(0, Math.floor((target - tol) / binHz));
-      const highBin = Math.min(freqData.length - 1, Math.ceil((target + tol) / binHz));
-      let maxEnergy = 0;
-      for(let i = lowBin; i <= highBin; i++){
-        if(freqData[i] > maxEnergy) maxEnergy = freqData[i];
-      }
-      triggered = maxEnergy > 140; // umbral de energía en esa banda (0-255)
+      triggered = bandEnergy > 140; // umbral de energía en la banda objetivo (0-255)
     }
 
     const now = performance.now();
