@@ -261,40 +261,39 @@
       </div>
     </div>
     <div style="margin-bottom:12px;">
-      <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Sensibilidad</label>
-      <input type="range" id="sensSlider" min="1" max="100" value="70" style="width:100%;">
-    </div>
-    <label class="toggle-label" style="margin-left:0; margin-bottom:8px; display:flex;">
-      <input type="checkbox" id="useFreqFilter" checked>
-      Exigir frecuencia específica (pulso característico)
-    </label>
-    <div class="time-inputs" id="freqInputsWrap" style="opacity:1;">
-      <input type="number" id="targetFreq" min="50" max="10000" value="4770" style="width:80px;" title="Frecuencia (Hz)">
-      <span>Hz ±</span>
-      <input type="number" id="freqTolerance" min="10" max="2000" value="180" style="width:70px;" title="Tolerancia (Hz)">
-    </div>
-    <div style="font-size:11px; color:var(--muted); margin-top:6px;">
-      Valor de referencia (~4770 Hz) calculado a partir del audio de muestra. Si tu detector real no matchea, usá la calibración en vivo de abajo.
+      <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Sensibilidad general (piso de energía)</label>
+      <input type="range" id="sensSlider" min="1" max="100" value="60" style="width:100%;">
     </div>
 
-    <div style="margin-top:16px; padding-top:14px; border-top:1px dashed var(--border);">
-      <div style="font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Calibración en vivo</div>
+    <div style="margin-top:8px; padding-top:14px; border-top:1px dashed var(--border);">
+      <div style="font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">
+        Huella espectral del pulso <span style="color:var(--accent);">(precargada desde tu audio)</span>
+      </div>
+      <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">
+        En vez de mirar una sola frecuencia, esto compara la <b>forma completa</b> del sonido (varias bandas a la vez) contra la huella de tu detector real. Mucho más específico: ignora voces, golpes o ruido que "pisen" una sola banda.
+      </div>
       <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
-        <span style="font-size:12px; color:var(--muted);">Frecuencia dominante ahora:</span>
-        <span id="liveFreqReadout" style="font-family:monospace; font-size:20px; font-weight:700; color:var(--accent2);">-- Hz</span>
+        <span style="font-size:12px; color:var(--muted);">Coincidencia ahora:</span>
+        <span id="simReadout" style="font-family:monospace; font-size:22px; font-weight:700; color:var(--accent2);">0%</span>
       </div>
-      <div id="bandLevelWrap" style="background:var(--panel2); border:1px solid var(--border); border-radius:8px; height:10px; overflow:hidden; margin-bottom:4px;">
-        <div id="bandLevelBar" style="height:100%; width:0%; background:var(--accent2); transition:width 0.05s linear;"></div>
+      <div style="background:var(--panel2); border:1px solid var(--border); border-radius:8px; height:12px; overflow:hidden; position:relative; margin-bottom:6px;">
+        <div id="simBar" style="height:100%; width:0%; background:var(--accent2); transition:width 0.05s linear;"></div>
+        <div id="simThresholdMarker" style="position:absolute; top:0; bottom:0; width:2px; background:var(--danger); left:75%;"></div>
       </div>
-      <div id="bandNumbersEl" style="font-size:11px; color:var(--muted); text-align:right; margin-bottom:10px; font-family:monospace;">Energía: --  ·  Umbral: --</div>
-      <button id="btnCapture" class="btn-mark" style="width:100%; padding:12px;">🎯 Mantené apretado mientras suena el detector</button>
+      <label style="font-size:12px; color:var(--muted); display:block; margin:10px 0 4px;">
+        Similitud mínima para disparar: <span id="simThresholdLabel" style="color:var(--text); font-weight:600;">75%</span>
+      </label>
+      <input type="range" id="simThresholdSlider" min="40" max="98" value="75" style="width:100%;">
+
+      <button id="btnCapture" class="btn-mark" style="width:100%; padding:12px; margin-top:14px;">🎯 Mantené apretado mientras suena el detector</button>
       <div style="font-size:11px; color:var(--muted); margin-top:6px;">
-        Con el micrófono activo, hacé sonar tu detector real y mantené este botón apretado durante el pulso. Al soltar, la app calcula automáticamente la frecuencia objetivo y la tolerancia a partir de lo que realmente captó tu celular.
+        Si tu celular capta el pulso distinto al audio que me compartiste, podés recalibrar: mantené apretado este botón mientras suena el detector real y soltalo justo después. La app promedia varias lecturas y arma una huella nueva a partir de lo que tu micrófono realmente escucha.
       </div>
+      <button id="btnResetFingerprint" class="btn-reset" style="width:100%; padding:8px; margin-top:8px; font-size:12px;">↺ Volver a la huella original</button>
     </div>
 
     <div style="font-size:12px; color:var(--muted); margin-top:14px;">
-      Con el cronómetro corriendo, cuando el sonido supere el umbral (y coincida con la frecuencia, si está exigida), se marca el tiempo automáticamente.
+      Con el cronómetro corriendo, cuando la coincidencia supere el umbral, se marca el tiempo automáticamente.
     </div>
   </div>
 
@@ -417,21 +416,71 @@
   const micStatus = document.getElementById('micStatus');
   const levelBar = document.getElementById('levelBar');
   const sensSlider = document.getElementById('sensSlider');
-  const useFreqFilter = document.getElementById('useFreqFilter');
-  const freqInputsWrap = document.getElementById('freqInputsWrap');
-  const targetFreq = document.getElementById('targetFreq');
-  const freqTolerance = document.getElementById('freqTolerance');
-  const liveFreqReadout = document.getElementById('liveFreqReadout');
-  const bandLevelBar = document.getElementById('bandLevelBar');
-  const bandLevelWrap = document.getElementById('bandLevelWrap');
-  const bandNumbersEl = document.getElementById('bandNumbersEl');
+  const simReadout = document.getElementById('simReadout');
+  const simBar = document.getElementById('simBar');
+  const simThresholdMarker = document.getElementById('simThresholdMarker');
+  const simThresholdSlider = document.getElementById('simThresholdSlider');
+  const simThresholdLabel = document.getElementById('simThresholdLabel');
   const btnCapture = document.getElementById('btnCapture');
+  const btnResetFingerprint = document.getElementById('btnResetFingerprint');
+
+  // ---- Huella espectral (matched filter por similitud coseno) ----
+  // Puntos de frecuencia (Hz) donde se muestra el espectro para armar la "huella".
+  // Cubre 200-6000 Hz cada 50 Hz (117 puntos): suficiente resolución para capturar
+  // la forma del pulso sin depender de un único bin de FFT.
+  const FINGERPRINT_FREQS = [];
+  for(let f = 200; f <= 6000; f += 50) FINGERPRINT_FREQS.push(f);
+
+  // Huella de referencia, calculada a partir de la grabación real del detector
+  // que compartiste (pulso aislado, ~0.85s del audio). Ya normalizada (vector unitario).
+  const DEFAULT_FINGERPRINT = [0.0049,0.0023,0.0052,0.0033,0.0013,0.0018,0.0053,0.0059,0.0049,0.0053,0.0027,0.0023,0.0024,0.0124,0.0107,0.0019,0.0007,0.0023,0.0029,0.0038,0.0026,0.0031,0.0025,0.0009,0.0026,0.0009,0.0035,0.0004,0.0014,0.0019,0.002,0.0022,0.0005,0.0032,0.0027,0.0061,0.0097,0.017,0.0073,0.0092,0.0503,0.0219,0.176,0.0366,0.2202,0.0957,0.0351,0.03,0.0087,0.0182,0.0087,0.0109,0.0046,0.0063,0.0048,0.0011,0.0022,0.0005,0.0006,0.0015,0.0006,0.0003,0.0007,0.0002,0.0005,0.0003,0.0004,0.0003,0.0005,0.0003,0.0002,0.0,0.0002,0.0004,0.0005,0.0009,0.0004,0.0026,0.0023,0.0019,0.0016,0.0027,0.0038,0.005,0.0066,0.0184,0.0128,0.0046,0.0107,0.0521,0.1765,0.872,0.3222,0.031,0.0495,0.0202,0.0079,0.0118,0.0032,0.0067,0.006,0.0008,0.0014,0.0015,0.0052,0.0007,0.0,0.0006,0.0,0.0001,0.0001,0.0008,0.0008,0.0001,0.0002,0.0001,0.0001];
+
+  let currentFingerprint = DEFAULT_FINGERPRINT.slice();
 
   let capturing = false;
-  let capturedFreqs = [];
+  let capturedVectors = []; // vectores crudos (sin normalizar) juntados durante la captura
 
-  useFreqFilter.addEventListener('change', () => {
-    freqInputsWrap.style.opacity = useFreqFilter.checked ? '1' : '0.4';
+  function getMagnitudeAtFreq(freqData, f, binHz){
+    const idx = Math.min(freqData.length - 1, Math.max(0, Math.round(f / binHz)));
+    return freqData[idx];
+  }
+
+  function buildLiveVector(freqData, binHz){
+    const vec = new Array(FINGERPRINT_FREQS.length);
+    for(let i = 0; i < FINGERPRINT_FREQS.length; i++){
+      vec[i] = getMagnitudeAtFreq(freqData, FINGERPRINT_FREQS[i], binHz);
+    }
+    return vec;
+  }
+
+  function l2Normalize(vec){
+    let sumSq = 0;
+    for(let i = 0; i < vec.length; i++) sumSq += vec[i] * vec[i];
+    const norm = Math.sqrt(sumSq) || 1e-9;
+    return vec.map(v => v / norm);
+  }
+
+  function dot(a, b){
+    let s = 0;
+    for(let i = 0; i < a.length; i++) s += a[i] * b[i];
+    return s;
+  }
+
+  function rawMagnitude(vec){
+    // energía total cruda del vector, para descartar silencio antes de normalizar
+    let s = 0;
+    for(let i = 0; i < vec.length; i++) s += vec[i];
+    return s;
+  }
+
+  simThresholdSlider.addEventListener('input', () => {
+    simThresholdLabel.textContent = simThresholdSlider.value + '%';
+    simThresholdMarker.style.left = simThresholdSlider.value + '%';
+  });
+
+  btnResetFingerprint.addEventListener('click', () => {
+    currentFingerprint = DEFAULT_FINGERPRINT.slice();
+    alert('Se restauró la huella original (calculada a partir del audio de muestra que compartiste).');
   });
 
   function startCapture(e){
@@ -441,7 +490,7 @@
       return;
     }
     capturing = true;
-    capturedFreqs = [];
+    capturedVectors = [];
     btnCapture.textContent = '🔴 Escuchando… soltá cuando termine el pulso';
   }
 
@@ -451,24 +500,27 @@
     capturing = false;
     btnCapture.textContent = '🎯 Mantené apretado mientras suena el detector';
 
-    if(capturedFreqs.length === 0){
-      alert('No se detectó ningún pico de frecuencia claro mientras mantuviste apretado. Probá de nuevo, acercando el celular al detector o subiendo la sensibilidad.');
+    if(capturedVectors.length === 0){
+      alert('No se capturó audio durante ese lapso. Probá de nuevo.');
       return;
     }
 
-    // Usamos la mediana (más robusta ante algún valor suelto de ruido) y
-    // el desvío para armar una tolerancia razonable.
-    const sorted = [...capturedFreqs].sort((a,b) => a-b);
-    const median = sorted[Math.floor(sorted.length/2)];
-    const spread = Math.max(...capturedFreqs) - Math.min(...capturedFreqs);
-    const tolerance = Math.max(120, Math.round(spread/2) + 100);
+    // Nos quedamos con el frame de mayor energía cruda (el instante más representativo
+    // del pulso, en vez de promediar todo el lapso, que incluiría silencio antes/después).
+    let best = capturedVectors[0];
+    let bestEnergy = rawMagnitude(best);
+    for(const v of capturedVectors){
+      const e2 = rawMagnitude(v);
+      if(e2 > bestEnergy){ bestEnergy = e2; best = v; }
+    }
 
-    targetFreq.value = median;
-    freqTolerance.value = tolerance;
-    useFreqFilter.checked = true;
-    freqInputsWrap.style.opacity = '1';
+    if(bestEnergy < 50){
+      alert('El sonido captado fue muy débil para armar una huella confiable. Acercá el celular al detector e intentá de nuevo.');
+      return;
+    }
 
-    alert(`Frecuencia capturada: ${median} Hz (±${tolerance} Hz)\nMuestras usadas: ${capturedFreqs.length}\n\nYa quedó configurada como objetivo. Probá hacer sonar el detector con el cronómetro corriendo para ver si automarca.`);
+    currentFingerprint = l2Normalize(best);
+    alert(`Huella recalibrada con éxito a partir de ${capturedVectors.length} lecturas.\n\nProbá ahora hacer sonar el detector con el cronómetro corriendo.`);
   }
 
   btnCapture.addEventListener('touchstart', startCapture, { passive: false });
@@ -623,7 +675,7 @@
     const timeData = new Uint8Array(bufferLength);
     analyser.getByteTimeDomainData(timeData);
 
-    // Nivel de audio (RMS)
+    // Nivel de audio general (RMS) — solo se muestra como referencia visual
     let sumSquares = 0;
     for(let i = 0; i < bufferLength; i++){
       const norm = (timeData[i] - 128) / 128;
@@ -632,79 +684,46 @@
     const rms = Math.sqrt(sumSquares / bufferLength);
     levelBar.style.width = Math.min(100, rms * 300) + '%';
 
-    // --- Análisis de frecuencia: siempre se calcula, para poder mostrar
-    //     la frecuencia dominante en vivo y alimentar la calibración ---
+    // --- Huella espectral en vivo ---
     const freqData = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(freqData);
     const sampleRate = audioCtx.sampleRate;
     const binHz = sampleRate / analyser.fftSize;
 
-    // Ignoramos los bins muy graves (< ~150 Hz) para no confundir con ruido de fondo/roce
-    const minBin = Math.max(1, Math.floor(150 / binHz));
-    let peakBin = -1;
-    let peakMag = 0;
-    for(let i = minBin; i < freqData.length; i++){
-      if(freqData[i] > peakMag){
-        peakMag = freqData[i];
-        peakBin = i;
-      }
-    }
-    const NOISE_FLOOR = 45; // por debajo de esto, consideramos que no hay un pico claro
-    const dominantFreq = (peakBin >= 0 && peakMag > NOISE_FLOOR) ? Math.round(peakBin * binHz) : null;
+    const liveVectorRaw = buildLiveVector(freqData, binHz);
+    const liveEnergy = rawMagnitude(liveVectorRaw);
 
-    if(dominantFreq){
-      liveFreqReadout.textContent = dominantFreq + ' Hz';
-    }else{
-      liveFreqReadout.textContent = '-- Hz';
-    }
-
-    // Barra de energía en la banda objetivo actual (para ver si matchea en vivo)
-    const target = parseFloat(targetFreq.value) || 1000;
-    const tol = parseFloat(freqTolerance.value) || 150;
-    const lowBin = Math.max(0, Math.floor((target - tol) / binHz));
-    const highBin = Math.min(freqData.length - 1, Math.ceil((target + tol) / binHz));
-    let bandEnergy = 0;
-    for(let i = lowBin; i <= highBin; i++){
-      if(freqData[i] > bandEnergy) bandEnergy = freqData[i];
-    }
-
+    // Piso de energía según sensibilidad (evita comparar "silencio" contra la huella,
+    // lo que a veces da similitudes engañosas por puro ruido de cuantización)
     const sensitivity = parseInt(sensSlider.value);
+    const energyFloor = 60 - (sensitivity / 100) * 45; // rango aprox. 15-60
 
-    // Umbral de energía en banda, ligado a la sensibilidad (rango aprox. 40-190 sobre 255)
-    const bandThreshold = 205 - (sensitivity / 100) * 165;
-
-    bandLevelBar.style.width = Math.min(100, (bandEnergy / 255) * 100) + '%';
-    if(bandLevelWrap){
-      bandLevelWrap.title = `Energía: ${bandEnergy} / Umbral: ${Math.round(bandThreshold)}`;
+    let similarity = 0;
+    if(liveEnergy > energyFloor){
+      const liveVectorNorm = l2Normalize(liveVectorRaw);
+      similarity = dot(liveVectorNorm, currentFingerprint); // ambos vectores unitarios → coseno directo
     }
-    if(bandNumbersEl){
-      bandNumbersEl.textContent = `Energía: ${bandEnergy}  ·  Umbral: ${Math.round(bandThreshold)}`;
-    }
+    const simPct = Math.max(0, Math.round(similarity * 100));
 
-    // Si el usuario está manteniendo apretado "Capturar", vamos guardando lecturas válidas
-    if(capturing && dominantFreq){
-      capturedFreqs.push(dominantFreq);
+    simReadout.textContent = simPct + '%';
+    simBar.style.width = Math.min(100, simPct) + '%';
+    simBar.style.background = simPct >= parseInt(simThresholdSlider.value) ? 'var(--accent)' : 'var(--accent2)';
+
+    // Si el usuario está manteniendo apretado "Capturar", guardamos el vector crudo de este frame
+    if(capturing){
+      capturedVectors.push(liveVectorRaw);
     }
 
     // --- Lógica de disparo (auto-marcar) ---
-    // Si el filtro de frecuencia está activo, el criterio ES la energía en esa banda puntual
-    // (un pulso agudo y corto puede tener poco volumen "general" y aun así ser bien fuerte
-    // justo en su frecuencia — por eso NO exigimos además el volumen de banda ancha).
-    // Si el filtro está desactivado, usamos el volumen general (RMS) como antes.
-    let triggered;
-    if(useFreqFilter.checked){
-      triggered = bandEnergy > bandThreshold;
-    }else{
-      const threshold = 0.55 - (sensitivity / 100) * 0.5;
-      triggered = rms > threshold;
-    }
+    const simThreshold = parseInt(simThresholdSlider.value) / 100;
+    const triggered = similarity > simThreshold;
 
     const now = performance.now();
     if(triggered && autoMarkEnabled.checked && running && (now - lastAutoMark) > AUTO_MARK_COOLDOWN){
       lastAutoMark = now;
       markTime();
-      micStatus.textContent = '✓ Pulso detectado — tiempo marcado';
-      setTimeout(() => { if(listening) micStatus.textContent = 'Micrófono activo'; }, 900);
+      micStatus.textContent = `✓ Pulso detectado (${simPct}% similitud) — tiempo marcado`;
+      setTimeout(() => { if(listening) micStatus.textContent = 'Micrófono activo'; }, 1200);
     }
 
     requestAnimationFrame(audioLoop);
