@@ -283,9 +283,10 @@
         <span style="font-size:12px; color:var(--muted);">Frecuencia dominante ahora:</span>
         <span id="liveFreqReadout" style="font-family:monospace; font-size:20px; font-weight:700; color:var(--accent2);">-- Hz</span>
       </div>
-      <div style="background:var(--panel2); border:1px solid var(--border); border-radius:8px; height:10px; overflow:hidden; margin-bottom:10px;">
+      <div id="bandLevelWrap" style="background:var(--panel2); border:1px solid var(--border); border-radius:8px; height:10px; overflow:hidden; margin-bottom:4px;">
         <div id="bandLevelBar" style="height:100%; width:0%; background:var(--accent2); transition:width 0.05s linear;"></div>
       </div>
+      <div id="bandNumbersEl" style="font-size:11px; color:var(--muted); text-align:right; margin-bottom:10px; font-family:monospace;">Energía: --  ·  Umbral: --</div>
       <button id="btnCapture" class="btn-mark" style="width:100%; padding:12px;">🎯 Mantené apretado mientras suena el detector</button>
       <div style="font-size:11px; color:var(--muted); margin-top:6px;">
         Con el micrófono activo, hacé sonar tu detector real y mantené este botón apretado durante el pulso. Al soltar, la app calcula automáticamente la frecuencia objetivo y la tolerancia a partir de lo que realmente captó tu celular.
@@ -422,6 +423,8 @@
   const freqTolerance = document.getElementById('freqTolerance');
   const liveFreqReadout = document.getElementById('liveFreqReadout');
   const bandLevelBar = document.getElementById('bandLevelBar');
+  const bandLevelWrap = document.getElementById('bandLevelWrap');
+  const bandNumbersEl = document.getElementById('bandNumbersEl');
   const btnCapture = document.getElementById('btnCapture');
 
   let capturing = false;
@@ -566,6 +569,7 @@
       micSource = audioCtx.createMediaStreamSource(micStream);
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.15; // bajo, para reaccionar a pulsos breves (no sonidos sostenidos)
       micSource.connect(analyser); // OJO: no conectar a destination, para no generar retorno de audio
       listening = true;
       micStatus.textContent = 'Micrófono activo';
@@ -663,7 +667,19 @@
     for(let i = lowBin; i <= highBin; i++){
       if(freqData[i] > bandEnergy) bandEnergy = freqData[i];
     }
+
+    const sensitivity = parseInt(sensSlider.value);
+
+    // Umbral de energía en banda, ligado a la sensibilidad (rango aprox. 40-190 sobre 255)
+    const bandThreshold = 205 - (sensitivity / 100) * 165;
+
     bandLevelBar.style.width = Math.min(100, (bandEnergy / 255) * 100) + '%';
+    if(bandLevelWrap){
+      bandLevelWrap.title = `Energía: ${bandEnergy} / Umbral: ${Math.round(bandThreshold)}`;
+    }
+    if(bandNumbersEl){
+      bandNumbersEl.textContent = `Energía: ${bandEnergy}  ·  Umbral: ${Math.round(bandThreshold)}`;
+    }
 
     // Si el usuario está manteniendo apretado "Capturar", vamos guardando lecturas válidas
     if(capturing && dominantFreq){
@@ -671,12 +687,16 @@
     }
 
     // --- Lógica de disparo (auto-marcar) ---
-    const sensitivity = parseInt(sensSlider.value);
-    const threshold = 0.55 - (sensitivity / 100) * 0.5;
-    let triggered = rms > threshold;
-
-    if(triggered && useFreqFilter.checked){
-      triggered = bandEnergy > 140; // umbral de energía en la banda objetivo (0-255)
+    // Si el filtro de frecuencia está activo, el criterio ES la energía en esa banda puntual
+    // (un pulso agudo y corto puede tener poco volumen "general" y aun así ser bien fuerte
+    // justo en su frecuencia — por eso NO exigimos además el volumen de banda ancha).
+    // Si el filtro está desactivado, usamos el volumen general (RMS) como antes.
+    let triggered;
+    if(useFreqFilter.checked){
+      triggered = bandEnergy > bandThreshold;
+    }else{
+      const threshold = 0.55 - (sensitivity / 100) * 0.5;
+      triggered = rms > threshold;
     }
 
     const now = performance.now();
