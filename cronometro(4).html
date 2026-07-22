@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cronómetro de precisión</title>
+<style>
+  :root{
+    --bg: #0f1117;
+    --panel: #161a23;
+    --panel2: #1d222d;
+    --accent: #4fd1c5;
+    --accent2: #f6ad55;
+    --danger: #f56565;
+    --text: #e8eaf0;
+    --muted: #8890a0;
+    --border: #2a2f3a;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    min-height:100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+    display:flex;
+    justify-content:center;
+    padding: 24px 12px;
+  }
+  .app{
+    width:100%;
+    max-width: 520px;
+  }
+  h1{
+    font-size: 18px;
+    font-weight: 600;
+    text-align:center;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    margin: 0 0 20px;
+  }
+  .clock-panel{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 20px;
+    text-align:center;
+    margin-bottom: 16px;
+  }
+  .display{
+    font-variant-numeric: tabular-nums;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 52px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  .display .centis{
+    font-size: 30px;
+    color: var(--accent);
+  }
+  .status{
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .status.running{ color: var(--accent); }
+
+  .btn-row{
+    display:flex;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  button{
+    flex:1;
+    padding: 14px 10px;
+    border-radius: 10px;
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+    cursor:pointer;
+    transition: transform 0.05s ease, opacity 0.15s ease;
+  }
+  button:active{ transform: scale(0.97); }
+  button:disabled{ opacity: 0.4; cursor:not-allowed; }
+
+  .btn-start{ background: var(--accent); color:#0f1117; }
+  .btn-stop{ background: var(--danger); color:#fff; }
+  .btn-mark{ background: var(--accent2); color:#0f1117; }
+  .btn-reset{ background: var(--panel2); color: var(--text); border:1px solid var(--border); }
+  .btn-export{ background: var(--panel2); color: var(--text); border:1px solid var(--border); }
+
+  .mark-btn-full{
+    width:100%;
+    padding: 18px;
+    font-size: 17px;
+    margin-top: 10px;
+    background: var(--accent2);
+    color:#0f1117;
+    border-radius: 12px;
+  }
+
+  .section{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  .section h2{
+    font-size: 14px;
+    color: var(--muted);
+    margin: 0 0 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .alarm-row{
+    display:flex;
+    align-items:center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .time-inputs{
+    display:flex;
+    align-items:center;
+    gap: 4px;
+  }
+  .time-inputs input{
+    width: 52px;
+    text-align:center;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 4px;
+    font-family: monospace;
+    font-size: 15px;
+  }
+  .time-inputs span{ color: var(--muted); font-weight:600; }
+
+  .toggle-label{
+    display:flex;
+    align-items:center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor:pointer;
+    margin-left: auto;
+  }
+  .toggle-label input{ width:18px; height:18px; cursor:pointer; }
+
+  .list-wrap{
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  table{
+    width:100%;
+    border-collapse: collapse;
+    font-family: 'Consolas', monospace;
+    font-size: 13.5px;
+  }
+  th, td{
+    padding: 8px 6px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  th{
+    color: var(--muted);
+    font-weight:600;
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+  td.num{ text-align:right; }
+  .empty-msg{
+    color: var(--muted);
+    font-size: 13px;
+    text-align:center;
+    padding: 16px 0;
+  }
+  .del{
+    color: var(--danger);
+    cursor:pointer;
+    font-weight:700;
+    padding: 0 6px;
+  }
+  .footer-row{
+    display:flex;
+    gap:10px;
+    margin-top: 14px;
+  }
+  .count-badge{
+    display:inline-block;
+    background: var(--panel2);
+    border:1px solid var(--border);
+    color: var(--accent);
+    font-size:12px;
+    padding: 2px 10px;
+    border-radius: 20px;
+    margin-left: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>CRONÓMETRO · CENTÉSIMAS DE SEGUNDO</h1>
+
+  <div class="section" style="text-align:center;">
+    <h2 style="margin-bottom:6px;">Reloj de referencia</h2>
+    <div id="refClock" style="font-family:'Consolas',monospace; font-size:22px; font-weight:600; letter-spacing:0.5px;">--:--:--</div>
+    <div id="refDate" style="color:var(--muted); font-size:12px; margin-top:2px;">--</div>
+    <select id="tzSelect" style="margin-top:10px; width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px; font-size:13px;">
+    </select>
+  </div>
+
+  <div class="clock-panel">
+    <div class="display" id="display">00:00<span class="centis">.00</span></div>
+    <div class="status" id="status">Detenido</div>
+
+    <button class="mark-btn-full" id="btnMark" disabled>📍 MARCAR TIEMPO</button>
+
+    <div class="btn-row">
+      <button class="btn-start" id="btnStart">▶ Iniciar</button>
+      <button class="btn-stop" id="btnStop" disabled>⏸ Pausar</button>
+      <button class="btn-reset" id="btnReset">↺ Reset</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Alarma sonora en tiempo objetivo</h2>
+    <div class="alarm-row">
+      <div class="time-inputs">
+        <input type="number" id="alarmMin" min="0" max="99" value="0" title="Minutos">
+        <span>:</span>
+        <input type="number" id="alarmSec" min="0" max="59" value="0" title="Segundos">
+        <span>.</span>
+        <input type="number" id="alarmCenti" min="0" max="99" value="0" title="Centésimas">
+      </div>
+      <label class="toggle-label">
+        <input type="checkbox" id="alarmEnabled">
+        Activar
+      </label>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Auto-marcar por pulso de sonido</h2>
+    <div class="alarm-row" style="margin-bottom:14px;">
+      <button id="btnMic" class="btn-reset" style="flex:none; padding:10px 16px;">🎤 Activar micrófono</button>
+      <label class="toggle-label">
+        <input type="checkbox" id="autoMarkEnabled" disabled>
+        Auto-marcar
+      </label>
+    </div>
+    <div id="secureContextNotice" style="font-size:11px; margin-bottom:10px;"></div>
+    <div style="margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:4px;">
+        <span>Nivel de audio</span><span id="micStatus">Micrófono inactivo</span>
+      </div>
+      <div style="background:var(--panel2); border:1px solid var(--border); border-radius:8px; height:14px; overflow:hidden;">
+        <div id="levelBar" style="height:100%; width:0%; background:var(--accent); transition:width 0.05s linear;"></div>
+      </div>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Sensibilidad</label>
+      <input type="range" id="sensSlider" min="1" max="100" value="70" style="width:100%;">
+    </div>
+    <label class="toggle-label" style="margin-left:0; margin-bottom:8px; display:flex;">
+      <input type="checkbox" id="useFreqFilter" checked>
+      Exigir frecuencia específica (pulso característico)
+    </label>
+    <div class="time-inputs" id="freqInputsWrap" style="opacity:1;">
+      <input type="number" id="targetFreq" min="50" max="10000" value="4770" style="width:80px;" title="Frecuencia (Hz)">
+      <span>Hz ±</span>
+      <input type="number" id="freqTolerance" min="10" max="2000" value="180" style="width:70px;" title="Tolerancia (Hz)">
+    </div>
+    <div style="font-size:11px; color:var(--accent); margin-top:6px;">
+      ✓ Preconfigurado con la frecuencia de tu detector (~4760-4780 Hz), calibrada a partir del audio de muestra que compartiste.
+    </div>
+    <div style="font-size:12px; color:var(--muted); margin-top:10px;">
+      Con el cronómetro corriendo, cuando el sonido supere el umbral (y coincida con la frecuencia, si está exigida), se marca el tiempo automáticamente.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Tiempos guardados <span class="count-badge" id="countBadge">0</span></h2>
+    <div class="list-wrap" id="listWrap">
+      <div class="empty-msg" id="emptyMsg">Aún no marcaste ningún tiempo.</div>
+      <table id="table" style="display:none">
+        <thead>
+          <tr><th>#</th><th>Tiempo</th><th class="num">Δ anterior</th><th>Hora real</th><th></th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="footer-row">
+      <button class="btn-export" id="btnExport">💾 Exportar a TXT</button>
+      <button class="btn-reset" id="btnClearList">🗑 Vaciar lista</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let running = false;
+  let startTs = 0;
+  let elapsedBeforePause = 0;
+  let rafId = null;
+  let marks = []; // { ms: number, label: string }
+  let alarmFired = false;
+
+  const displayEl = document.getElementById('display');
+  const statusEl = document.getElementById('status');
+  const btnStart = document.getElementById('btnStart');
+  const btnStop = document.getElementById('btnStop');
+  const btnReset = document.getElementById('btnReset');
+  const btnMark = document.getElementById('btnMark');
+  const btnExport = document.getElementById('btnExport');
+  const btnClearList = document.getElementById('btnClearList');
+  const tbody = document.getElementById('tbody');
+  const table = document.getElementById('table');
+  const emptyMsg = document.getElementById('emptyMsg');
+  const countBadge = document.getElementById('countBadge');
+
+  const alarmMin = document.getElementById('alarmMin');
+  const alarmSec = document.getElementById('alarmSec');
+  const alarmCenti = document.getElementById('alarmCenti');
+  const alarmEnabled = document.getElementById('alarmEnabled');
+
+  const refClockEl = document.getElementById('refClock');
+  const refDateEl = document.getElementById('refDate');
+  const tzSelect = document.getElementById('tzSelect');
+
+  const TIMEZONES = [
+    'America/Argentina/Buenos_Aires',
+    'America/Sao_Paulo',
+    'America/Santiago',
+    'America/Montevideo',
+    'America/Asuncion',
+    'America/Bogota',
+    'America/Lima',
+    'America/Mexico_City',
+    'America/New_York',
+    'America/Chicago',
+    'America/Los_Angeles',
+    'Europe/Madrid',
+    'Europe/London',
+    'Europe/Paris',
+    'UTC',
+    'Asia/Shanghai',
+    'Asia/Tokyo',
+    'Australia/Sydney'
+  ];
+
+  const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Argentina/Buenos_Aires';
+  if(!TIMEZONES.includes(detectedTz)) TIMEZONES.unshift(detectedTz);
+
+  TIMEZONES.forEach(tz => {
+    const opt = document.createElement('option');
+    opt.value = tz;
+    opt.textContent = tz.replace(/_/g, ' ') + (tz === detectedTz ? '  (detectado)' : '');
+    tzSelect.appendChild(opt);
+  });
+  tzSelect.value = detectedTz;
+
+  function formatWallClock(epochMs, tz){
+    try{
+      const d = new Date(epochMs);
+      const timeStr = new Intl.DateTimeFormat('es-AR', {
+        timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+      }).format(d);
+      const dateStr = new Intl.DateTimeFormat('es-AR', {
+        timeZone: tz, weekday: 'short', day: '2-digit', month: 'short', year: 'numeric'
+      }).format(d);
+      return { time: timeStr, date: dateStr };
+    }catch(e){
+      return { time: '--:--:--', date: '--' };
+    }
+  }
+
+  function updateRefClock(){
+    const tz = tzSelect.value;
+    const w = formatWallClock(Date.now(), tz);
+    refClockEl.textContent = w.time;
+    refDateEl.textContent = w.date + '  ·  ' + tz.replace(/_/g, ' ');
+  }
+  setInterval(updateRefClock, 1000);
+  updateRefClock();
+  tzSelect.addEventListener('change', () => { updateRefClock(); renderList(); });
+
+  // ---- Auto-marcar por pulso de sonido (micrófono) ----
+  let audioCtx = null;
+  let analyser = null;
+  let micStream = null;
+  let micSource = null;
+  let listening = false;
+  let lastAutoMark = 0;
+  const AUTO_MARK_COOLDOWN = 700; // ms mínimo entre marcas automáticas
+
+  const btnMic = document.getElementById('btnMic');
+  const autoMarkEnabled = document.getElementById('autoMarkEnabled');
+  const micStatus = document.getElementById('micStatus');
+  const levelBar = document.getElementById('levelBar');
+  const sensSlider = document.getElementById('sensSlider');
+  const useFreqFilter = document.getElementById('useFreqFilter');
+  const freqInputsWrap = document.getElementById('freqInputsWrap');
+  const targetFreq = document.getElementById('targetFreq');
+  const freqTolerance = document.getElementById('freqTolerance');
+
+  useFreqFilter.addEventListener('change', () => {
+    freqInputsWrap.style.opacity = useFreqFilter.checked ? '1' : '0.4';
+  });
+
+  // Aviso temprano sobre si el navegador va a poder mostrar el cartel de permiso
+  (function checkSecureContext(){
+    const notice = document.getElementById('secureContextNotice');
+    if(!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      notice.style.color = 'var(--danger)';
+      notice.textContent = '⚠ Esta página no está en HTTPS/localhost: Chrome no va a poder pedir permiso de micrófono. Subila a un hosting con HTTPS o abrila como vista previa.';
+    }else{
+      notice.style.color = 'var(--muted)';
+      notice.textContent = 'Al tocar "Activar micrófono" vas a ver el cartel de permiso de Chrome. Aceptalo para habilitar el auto-marcado.';
+    }
+  })();
+
+  btnMic.addEventListener('click', async () => {
+    if(micStream){
+      stopMic();
+      return;
+    }
+
+    // Chrome (y la mayoría de navegadores móviles) SOLO muestra el cartel de
+    // permiso de micrófono en un "contexto seguro": HTTPS o localhost.
+    // Si el archivo se abre como file:// local, la API ni siquiera existe
+    // y el cartel nunca va a aparecer — hay que avisarlo claro.
+    if(!window.isSecureContext){
+      micStatus.textContent = 'Requiere HTTPS';
+      alert(
+        'Chrome no puede pedir permiso de micrófono en esta página.\n\n' +
+        'Motivo: esta página no se está sirviendo en un contexto seguro (HTTPS o localhost). ' +
+        'Si abriste el archivo .html directamente desde el celular (file://), Chrome bloquea el acceso al micrófono sin siquiera mostrar el cartel.\n\n' +
+        'Solución: subí este archivo a un hosting con HTTPS (o abrilo dentro de esta conversación como vista previa), y ahí sí Chrome va a preguntar el permiso normalmente.'
+      );
+      return;
+    }
+
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      micStatus.textContent = 'No disponible';
+      alert('Este navegador no soporta acceso al micrófono desde la web (getUserMedia no disponible).');
+      return;
+    }
+
+    // Si el usuario ya lo había denegado antes, Chrome NO vuelve a mostrar
+    // el cartel automáticamente. Lo detectamos para dar una instrucción clara
+    // en vez de un error confuso.
+    try{
+      if(navigator.permissions && navigator.permissions.query){
+        const status = await navigator.permissions.query({ name: 'microphone' });
+        if(status.state === 'denied'){
+          alert(
+            'El micrófono está bloqueado para este sitio desde antes.\n\n' +
+            'Chrome no va a mostrar el cartel de permiso de nuevo automáticamente. ' +
+            'Para habilitarlo: tocá el ícono de candado/información (🔒 o ⓘ) al lado de la dirección, ' +
+            'entrá a "Permisos del sitio" y activá el Micrófono manualmente. Después volvé a tocar "Activar micrófono".'
+          );
+          return;
+        }
+      }
+    }catch(permErr){
+      // Si el navegador no soporta permissions.query para 'microphone', seguimos igual:
+      // getUserMedia va a disparar el cartel (o el catch de abajo) de todas formas.
+    }
+
+    micStatus.textContent = 'Solicitando permiso…';
+    btnMic.disabled = true;
+
+    try{
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      micSource = audioCtx.createMediaStreamSource(micStream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      micSource.connect(analyser); // OJO: no conectar a destination, para no generar retorno de audio
+      listening = true;
+      micStatus.textContent = 'Micrófono activo';
+      btnMic.textContent = '🛑 Desactivar micrófono';
+      autoMarkEnabled.disabled = false;
+      autoMarkEnabled.checked = true;
+      audioLoop();
+    }catch(e){
+      if(e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError'){
+        micStatus.textContent = 'Permiso denegado';
+        alert('Rechazaste (o el sistema bloqueó) el permiso de micrófono. Volvé a tocar "Activar micrófono" y aceptá el cartel, o revisalo en los permisos del sitio (ícono de candado junto a la URL).');
+      }else if(e.name === 'NotFoundError' || e.name === 'DevicesNotFoundError'){
+        micStatus.textContent = 'Sin micrófono';
+        alert('No se encontró ningún micrófono disponible en este dispositivo.');
+      }else if(e.name === 'NotReadableError'){
+        micStatus.textContent = 'Micrófono ocupado';
+        alert('El micrófono está siendo usado por otra app. Cerrá otras apps que lo estén usando e intentá de nuevo.');
+      }else{
+        micStatus.textContent = 'Error de acceso';
+        alert('No se pudo acceder al micrófono: ' + (e.message || e.name || 'error desconocido'));
+      }
+      console.warn(e);
+    }finally{
+      btnMic.disabled = false;
+    }
+  });
+
+  function stopMic(){
+    listening = false;
+    if(micStream){
+      micStream.getTracks().forEach(t => t.stop());
+    }
+    if(audioCtx){
+      audioCtx.close();
+    }
+    micStream = null;
+    audioCtx = null;
+    analyser = null;
+    micSource = null;
+    micStatus.textContent = 'Micrófono inactivo';
+    btnMic.textContent = '🎤 Activar micrófono';
+    autoMarkEnabled.checked = false;
+    autoMarkEnabled.disabled = true;
+    levelBar.style.width = '0%';
+  }
+
+  function audioLoop(){
+    if(!listening || !analyser) return;
+
+    const bufferLength = analyser.fftSize;
+    const timeData = new Uint8Array(bufferLength);
+    analyser.getByteTimeDomainData(timeData);
+
+    // Nivel de audio (RMS)
+    let sumSquares = 0;
+    for(let i = 0; i < bufferLength; i++){
+      const norm = (timeData[i] - 128) / 128;
+      sumSquares += norm * norm;
+    }
+    const rms = Math.sqrt(sumSquares / bufferLength);
+    levelBar.style.width = Math.min(100, rms * 300) + '%';
+
+    // Umbral según sensibilidad (1-100): más sensible = umbral más bajo
+    const sensitivity = parseInt(sensSlider.value);
+    const threshold = 0.55 - (sensitivity / 100) * 0.5;
+    let triggered = rms > threshold;
+
+    // Filtro opcional de frecuencia específica
+    if(triggered && useFreqFilter.checked){
+      const freqData = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(freqData);
+      const sampleRate = audioCtx.sampleRate;
+      const target = parseFloat(targetFreq.value) || 1000;
+      const tol = parseFloat(freqTolerance.value) || 150;
+      const binHz = sampleRate / analyser.fftSize;
+      const lowBin = Math.max(0, Math.floor((target - tol) / binHz));
+      const highBin = Math.min(freqData.length - 1, Math.ceil((target + tol) / binHz));
+      let maxEnergy = 0;
+      for(let i = lowBin; i <= highBin; i++){
+        if(freqData[i] > maxEnergy) maxEnergy = freqData[i];
+      }
+      triggered = maxEnergy > 140; // umbral de energía en esa banda (0-255)
+    }
+
+    const now = performance.now();
+    if(triggered && autoMarkEnabled.checked && running && (now - lastAutoMark) > AUTO_MARK_COOLDOWN){
+      lastAutoMark = now;
+      markTime();
+      micStatus.textContent = '✓ Pulso detectado — tiempo marcado';
+      setTimeout(() => { if(listening) micStatus.textContent = 'Micrófono activo'; }, 900);
+    }
+
+    requestAnimationFrame(audioLoop);
+  }
+
+  function formatTime(ms){
+    const totalCenti = Math.floor(ms / 10);
+    const centi = totalCenti % 100;
+    const totalSec = Math.floor(totalCenti / 100);
+    const sec = totalSec % 60;
+    const totalMin = Math.floor(totalSec / 60);
+    const min = totalMin % 60;
+    const hours = Math.floor(totalMin / 60);
+    const pad = (n, l=2) => String(n).padStart(l, '0');
+    if(hours > 0){
+      return { main: `${pad(hours)}:${pad(min)}:${pad(sec)}`, centi: pad(centi) };
+    }
+    return { main: `${pad(min)}:${pad(sec)}`, centi: pad(centi) };
+  }
+
+  function getElapsed(){
+    if(running){
+      return elapsedBeforePause + (performance.now() - startTs);
+    }
+    return elapsedBeforePause;
+  }
+
+  function getAlarmTargetMs(){
+    const m = parseInt(alarmMin.value) || 0;
+    const s = parseInt(alarmSec.value) || 0;
+    const c = parseInt(alarmCenti.value) || 0;
+    return (m * 60 + s) * 1000 + c * 10;
+  }
+
+  function playAlarmSound(){
+    try{
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const now = ctx.currentTime;
+      const freqs = [880, 1046.5, 880];
+      freqs.forEach((f, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = f;
+        gain.gain.setValueAtTime(0.001, now + i * 0.22);
+        gain.gain.exponentialRampToValueAtTime(0.25, now + i * 0.22 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.22 + 0.18);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.22);
+        osc.stop(now + i * 0.22 + 0.2);
+      });
+    }catch(e){
+      console.warn('No se pudo reproducir sonido:', e);
+    }
+  }
+
+  function tick(){
+    const ms = getElapsed();
+    const t = formatTime(ms);
+    displayEl.innerHTML = `${t.main}<span class="centis">.${t.centi}</span>`;
+
+    if(alarmEnabled.checked && !alarmFired){
+      const target = getAlarmTargetMs();
+      if(target > 0 && ms >= target){
+        alarmFired = true;
+        playAlarmSound();
+      }
+    }
+
+    if(running){
+      rafId = requestAnimationFrame(tick);
+    }
+  }
+
+  function start(){
+    running = true;
+    startTs = performance.now();
+    statusEl.textContent = 'En marcha…';
+    statusEl.classList.add('running');
+    btnStart.disabled = true;
+    btnStop.disabled = false;
+    btnMark.disabled = false;
+    btnStart.textContent = '▶ Iniciar';
+    tick();
+  }
+
+  function stop(){
+    running = false;
+    elapsedBeforePause = getElapsed();
+    statusEl.textContent = 'Pausado';
+    statusEl.classList.remove('running');
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+    btnStart.textContent = '▶ Reanudar';
+    cancelAnimationFrame(rafId);
+  }
+
+  function reset(){
+    running = false;
+    elapsedBeforePause = 0;
+    alarmFired = false;
+    cancelAnimationFrame(rafId);
+    displayEl.innerHTML = '00:00<span class="centis">.00</span>';
+    statusEl.textContent = 'Detenido';
+    statusEl.classList.remove('running');
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+    btnMark.disabled = true;
+    btnStart.textContent = '▶ Iniciar';
+  }
+
+  function markTime(){
+    const ms = getElapsed();
+    const prevMs = marks.length ? marks[marks.length - 1].ms : 0;
+    marks.push({ ms, delta: ms - prevMs, wallTs: Date.now() });
+    renderList();
+  }
+
+  function renderList(){
+    countBadge.textContent = marks.length;
+    if(marks.length === 0){
+      table.style.display = 'none';
+      emptyMsg.style.display = 'block';
+      tbody.innerHTML = '';
+      return;
+    }
+    table.style.display = 'table';
+    emptyMsg.style.display = 'none';
+    const tz = tzSelect.value;
+    tbody.innerHTML = marks.map((m, i) => {
+      const t = formatTime(m.ms);
+      const d = formatTime(m.delta);
+      const w = formatWallClock(m.wallTs, tz);
+      return `<tr>
+        <td>${i + 1}</td>
+        <td>${t.main}.${t.centi}</td>
+        <td class="num">${i === 0 ? '—' : d.main + '.' + d.centi}</td>
+        <td style="font-size:12px; color:var(--muted);">${w.time}</td>
+        <td><span class="del" onclick="deleteMark(${i})">✕</span></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function deleteMark(index){
+    marks.splice(index, 1);
+    // recompute deltas
+    marks.forEach((m, i) => {
+      const prevMs = i === 0 ? 0 : marks[i - 1].ms;
+      m.delta = m.ms - prevMs;
+    });
+    renderList();
+  }
+  window.deleteMark = deleteMark;
+
+  function exportTxt(){
+    if(marks.length === 0){
+      alert('No hay tiempos guardados para exportar.');
+      return;
+    }
+    const now = new Date();
+    const tz = tzSelect.value;
+    const stamp = now.toLocaleString('es-AR');
+    let lines = [];
+    lines.push('TIEMPOS GUARDADOS - CRONÓMETRO');
+    lines.push(`Exportado: ${stamp}`);
+    lines.push(`Huso horario de referencia: ${tz}`);
+    lines.push('----------------------------------------');
+    lines.push('#\tTiempo\t\tDelta anterior\tHora real\t\tMilisegundos\tDelta (ms)\tTimestamp (epoch ms)');
+    marks.forEach((m, i) => {
+      const t = formatTime(m.ms);
+      const d = formatTime(m.delta);
+      const w = formatWallClock(m.wallTs, tz);
+      const deltaStr = i === 0 ? '—' : `${d.main}.${d.centi}`;
+      lines.push(`${i + 1}\t${t.main}.${t.centi}\t\t${deltaStr}\t\t${w.date} ${w.time}\t${m.ms}\t\t${i === 0 ? '—' : m.delta}\t\t${m.wallTs}`);
+    });
+    lines.push('----------------------------------------');
+    const total = marks[marks.length - 1].ms;
+    const tTotal = formatTime(total);
+    lines.push(`Tiempo total (último marcado): ${tTotal.main}.${tTotal.centi} (${total} ms)`);
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const filename = `tiempos_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}.txt`;
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  btnStart.addEventListener('click', start);
+  btnStop.addEventListener('click', stop);
+  btnReset.addEventListener('click', reset);
+  btnMark.addEventListener('click', markTime);
+  btnExport.addEventListener('click', exportTxt);
+  btnClearList.addEventListener('click', () => {
+    if(marks.length === 0) return;
+    if(confirm('¿Vaciar todos los tiempos guardados?')){
+      marks = [];
+      renderList();
+    }
+  });
+
+  // Reset alarm flag if target changes or is unchecked/rechecked
+  [alarmMin, alarmSec, alarmCenti].forEach(el => {
+    el.addEventListener('change', () => { alarmFired = false; });
+  });
+  alarmEnabled.addEventListener('change', () => { alarmFired = false; });
+</script>
+</body>
+</html>
